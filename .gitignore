@@ -1,0 +1,27 @@
+# ── Java / Maven ──────────────────────────────────────────────────────────────
+library-service/target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# ── Go ────────────────────────────────────────────────────────────────────────
+loans-service/vendor/
+loans-service/bin/
+
+# ── Secretos y entorno ────────────────────────────────────────────────────────
+.env
+*.env.local
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.idea/
+*.iml
+.vscode/
+*.DS_Store
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/

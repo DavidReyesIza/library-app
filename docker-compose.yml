@@ -1,0 +1,94 @@
+services:
+
+  # ── Bases de datos ──────────────────────────────────────────────────────────
+
+  postgres-library:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${LIBRARY_DB_NAME}
+      POSTGRES_USER: ${LIBRARY_DB_USER}
+      POSTGRES_PASSWORD: ${LIBRARY_DB_PASSWORD}
+    volumes:
+      - postgres_library_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LIBRARY_DB_USER} -d ${LIBRARY_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  loans-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${LOANS_DB_NAME}
+      POSTGRES_USER: ${LOANS_DB_USER}
+      POSTGRES_PASSWORD: ${LOANS_DB_PASSWORD}
+    volumes:
+      - postgres_loans_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LOANS_DB_USER} -d ${LOANS_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Servicios ───────────────────────────────────────────────────────────────
+
+  library-service:
+    build:
+      context: ./library-service
+      dockerfile: Dockerfile
+    ports:
+      - "${LIBRARY_SERVICE_PORT:-8080}:8080"
+    environment:
+      LIBRARY_DB_HOST: postgres-library
+      LIBRARY_DB_PORT: ${LIBRARY_DB_PORT}
+      LIBRARY_DB_NAME: ${LIBRARY_DB_NAME}
+      LIBRARY_DB_USER: ${LIBRARY_DB_USER}
+      LIBRARY_DB_PASSWORD: ${LIBRARY_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS}
+      LOANS_SERVICE_URL: http://loans-service:${LOANS_SERVICE_PORT:-8081}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    depends_on:
+      postgres-library:
+        condition: service_healthy
+      loans-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  loans-service:
+    build:
+      context: ./loans-service
+      dockerfile: Dockerfile
+    ports:
+      - "${LOANS_SERVICE_PORT:-8081}:8081"
+    environment:
+      LOANS_DB_HOST: loans-service-db
+      LOANS_DB_PORT: ${LOANS_DB_PORT}
+      LOANS_DB_NAME: ${LOANS_DB_NAME}
+      LOANS_DB_USER: ${LOANS_DB_USER}
+      LOANS_DB_PASSWORD: ${LOANS_DB_PASSWORD}
+      LIBRARY_SERVICE_URL: http://library-service:${LIBRARY_SERVICE_PORT:-8080}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      PORT: ${LOANS_SERVICE_PORT:-8081}
+    depends_on:
+      loans-service-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  postgres_library_data:
+  postgres_loans_data:
