@@ -29,7 +29,7 @@ CREATE TABLE books (
     title             VARCHAR(300)    NOT NULL,
     author            VARCHAR(200)    NOT NULL,
     isbn              VARCHAR(20)     NOT NULL UNIQUE,
-    publication_year  SMALLINT        NOT NULL,
+    publication_year  INT             NOT NULL,
     genre             VARCHAR(100)    NOT NULL,
     total_copies      INT             NOT NULL CHECK (total_copies >= 0),
     available_copies  INT             NOT NULL CHECK (available_copies >= 0),

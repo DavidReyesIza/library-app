@@ -1,6 +1,5 @@
 package com.library.config;
 
-import com.library.repository.UserRepository;
 import com.library.security.InternalApiKeyFilter;
 import com.library.security.JwtAuthFilter;
 import com.library.security.SecurityErrorHandlers;
@@ -17,7 +16,6 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -32,7 +30,7 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
     private final InternalApiKeyFilter internalApiKeyFilter;
     private final SecurityErrorHandlers securityErrorHandlers;
-    private final UserRepository userRepository;
+    private final UserDetailsService userDetailsService;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -57,15 +55,9 @@ public class SecurityConfig {
     }
 
     @Bean
-    public UserDetailsService userDetailsService() {
-        return email -> userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
-    }
-
-    @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService());
+        provider.setUserDetailsService(userDetailsService);
         provider.setPasswordEncoder(passwordEncoder());
         return provider;
     }
