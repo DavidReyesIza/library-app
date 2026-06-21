@@ -40,6 +40,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/health").permitAll()
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/api-docs/**").permitAll()
                         // Internal endpoints are protected by InternalApiKeyFilter, not JWT
                         .requestMatchers("/internal/**").permitAll()
                         .anyRequest().authenticated()
