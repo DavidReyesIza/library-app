@@ -14,5 +14,7 @@ public interface LoanRequestRepository extends JpaRepository<LoanRequest, UUID> 
 
     List<LoanRequest> findByUserId(UUID userId);
 
+    List<LoanRequest> findByUserIdAndStatus(UUID userId, LoanRequestStatus status);
+
     List<LoanRequest> findByStatus(LoanRequestStatus status);
 }

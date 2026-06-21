@@ -2,7 +2,6 @@ package com.library.controller;
 
 import com.library.dto.loan.CreateLoanRequest;
 import com.library.dto.loan.LoanRequestResponse;
-import com.library.dto.loan.LoanResponse;
 import com.library.model.User;
 import com.library.service.LoanOrchestrationService;
 import jakarta.validation.Valid;
@@ -37,13 +36,15 @@ public class LoanController {
         return ResponseEntity.noContent().build();
     }
 
+    /** CONFIRMED loans for the current user. Use the {@code id} field for POST /loans/{id}/return. */
     @GetMapping("/me/active")
-    public ResponseEntity<List<LoanResponse>> getActiveLoans(@AuthenticationPrincipal User currentUser) {
-        return ResponseEntity.ok(loanOrchestrationService.getActiveLoans(currentUser.getId()));
+    public ResponseEntity<List<LoanRequestResponse>> getActiveLoans(@AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(loanOrchestrationService.getMyActiveLoanRequests(currentUser.getId()));
     }
 
+    /** Full loan history for the current user. Use the {@code id} field for POST /loans/{id}/return. */
     @GetMapping("/me/history")
-    public ResponseEntity<List<LoanResponse>> getLoanHistory(@AuthenticationPrincipal User currentUser) {
-        return ResponseEntity.ok(loanOrchestrationService.getLoanHistory(currentUser.getId()));
+    public ResponseEntity<List<LoanRequestResponse>> getLoanHistory(@AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(loanOrchestrationService.getMyLoanRequests(currentUser.getId()));
     }
 }

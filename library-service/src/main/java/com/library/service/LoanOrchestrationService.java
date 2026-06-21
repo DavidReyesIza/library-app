@@ -98,6 +98,9 @@ public class LoanOrchestrationService {
             try {
                 loanClient.returnLoan(loanId);
                 log.info("Return processed by loans-service: loanId={}", loanId);
+                loanReq.setStatus(LoanRequestStatus.RETURNED);
+                loanRequestRepository.save(loanReq);
+                log.info("LoanRequest status updated to RETURNED: id={}", loanRequestId);
                 return;
             } catch (ServiceUnavailableException e) {
                 lastEx = e;
@@ -116,6 +119,22 @@ public class LoanOrchestrationService {
 
     public List<LoanResponse> getLoanHistory(UUID userId) {
         return loanClient.getLoanHistory(userId);
+    }
+
+    // ── Loan requests owned by this user (exposes LoanRequest.id for returns) ─
+
+    public List<LoanRequestResponse> getMyLoanRequests(UUID userId) {
+        return loanRequestRepository.findByUserId(userId)
+                .stream()
+                .map(LoanRequestResponse::from)
+                .toList();
+    }
+
+    public List<LoanRequestResponse> getMyActiveLoanRequests(UUID userId) {
+        return loanRequestRepository.findByUserIdAndStatus(userId, LoanRequestStatus.CONFIRMED)
+                .stream()
+                .map(LoanRequestResponse::from)
+                .toList();
     }
 
     // ── Private saga helpers ─────────────────────────────────────────────────

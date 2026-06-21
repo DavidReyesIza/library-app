@@ -1,0 +1,1 @@
+ALTER TYPE loan_request_status ADD VALUE IF NOT EXISTS 'RETURNED';
