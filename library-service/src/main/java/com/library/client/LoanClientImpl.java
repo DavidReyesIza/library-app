@@ -52,13 +52,15 @@ public class LoanClientImpl implements LoanClient {
     public Optional<LoanResponse> findByRequestId(UUID requestId) {
         log.info("Verifying loan in loans-service: requestId={}", requestId);
         try {
-            LoanResponse response = loansRestClient.get()
+            String rawBody = loansRestClient.get()
                     .uri("/loans/by-request-id/{requestId}", requestId)
                     .header("X-Internal-Api-Key", internalApiKey)
                     .retrieve()
-                    .onStatus(status -> status == HttpStatus.NOT_FOUND, (req, res) -> {})
-                    .body(LoanResponse.class);
-            return Optional.ofNullable(response);
+                    .body(String.class);
+            if (rawBody == null) return Optional.empty();
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            om.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+            return Optional.of(om.readValue(rawBody, LoanResponse.class));
         } catch (RestClientResponseException e) {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
                 return Optional.empty();
@@ -68,6 +70,9 @@ public class LoanClientImpl implements LoanClient {
         } catch (ResourceAccessException e) {
             log.error("loans-service unreachable during verification: {}", e.getMessage());
             throw new ServiceUnavailableException("loans-service unreachable during verification", e);
+        } catch (Exception e) {
+            log.error("loans-service verification parse error: {}", e.getMessage());
+            throw new ServiceUnavailableException("loans-service verification error", e);
         }
     }
 
@@ -114,4 +119,5 @@ public class LoanClientImpl implements LoanClient {
             throw new ServiceUnavailableException("loans-service unreachable", e);
         }
     }
+
 }

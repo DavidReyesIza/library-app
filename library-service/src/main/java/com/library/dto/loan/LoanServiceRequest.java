@@ -10,9 +10,9 @@ public record LoanServiceRequest(
         @JsonProperty("request_id")
         UUID requestId,
 
-        @JsonProperty("userId")
+        @JsonProperty("user_id")
         UUID userId,
 
-        @JsonProperty("bookId")
+        @JsonProperty("book_id")
         UUID bookId
 ) {}

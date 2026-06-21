@@ -10,7 +10,7 @@ public record LoanResponse(
 
         UUID id,
 
-        @JsonProperty("request_id")
+        @JsonProperty("requestId")
         UUID requestId,
 
         UUID userId,
