@@ -6,90 +6,90 @@
 
 ## 0. Setup del repositorio
 
-- [ ] Crear repo único en GitHub (público o privado con acceso dado)
-- [ ] Estructura de carpetas raíz: `library-service/`, `loans-service/`, `docker-compose.yml`, `.env.example`, `README.md`
-- [ ] `.gitignore` (target/, node_modules si aplica, .env, *.log, vendor/ si aplica)
-- [ ] `.env.example` con todas las variables necesarias, sin valores reales/secretos
+- [ X] Crear repo único en GitHub (público o privado con acceso dado)
+- [ X] Estructura de carpetas raíz: `library-service/`, `loans-service/`, `docker-compose.yml`, `.env.example`, `README.md`
+- [ X] `.gitignore` (target/, node_modules si aplica, .env, *.log, vendor/ si aplica)
+- [ X] `.env.example` con todas las variables necesarias, sin valores reales/secretos
 
 ---
 
 ## 1. library-service — Java / Spring Boot 3
 
 ### Setup base
-- [ ] `pom.xml`: spring-boot-starter-web, data-jpa, security, validation, postgresql, flyway, jjwt 0.12.x, lombok, starter-test, h2 (test)
-- [ ] Estructura de paquetes (por capa técnica — convención Spring estándar): `controller/`, `service/`, `repository/`, `client/`, `model/`, `dto/`, `security/`, `exception/`, `config/`
-- [ ] `application.yml` con variables de entorno (DB, JWT secret, URL de loans-service, API key interna)
-- [ ] Migración Flyway `V1__init.sql`: tablas `users`, `books`, `loan_requests`
+- [ x] `pom.xml`: spring-boot-starter-web, data-jpa, security, validation, postgresql, flyway, jjwt 0.12.x, lombok, starter-test, h2 (test)
+- [ x] Estructura de paquetes (por capa técnica — convención Spring estándar): `controller/`, `service/`, `repository/`, `client/`, `model/`, `dto/`, `security/`, `exception/`, `config/`
+- [ x] `application.yml` con variables de entorno (DB, JWT secret, URL de loans-service, API key interna)
+- [ x] Migración Flyway `V1__init.sql`: tablas `users`, `books`, `loan_requests`
 
 ### Autenticación y usuarios
-- [ ] Entidad `User` (id, fullName, email, passwordHash, role)
-- [ ] `POST /auth/register`
-- [ ] `POST /auth/login` → devuelve JWT
-- [ ] `JwtService`: generar/validar token (claims: userId, role, exp)
-- [ ] `JwtAuthFilter`: extrae y valida JWT en cada request
-- [ ] `SecurityConfig`: rutas públicas vs protegidas, roles ADMIN/USER
-- [ ] CRUD de usuarios:
-  - [ ] `GET /users` → solo ADMIN, lista todos los usuarios (con paginación)
-  - [ ] `GET /users/{id}` → ADMIN puede ver cualquiera; USER solo puede ver el suyo (403 si intenta ver otro)
-  - [ ] `PUT /users/{id}` → solo ADMIN (actualiza fullName, email, role)
-  - [ ] `DELETE /users/{id}` → solo ADMIN
-  - [ ] `GET /users/me` → atajo para USER autenticado ver su propio perfil (extrae id del JWT)
+- [ x] Entidad `User` (id, fullName, email, passwordHash, role)
+- [ x] `POST /auth/register`
+- [ x] `POST /auth/login` → devuelve JWT
+- [ x] `JwtService`: generar/validar token (claims: userId, role, exp)
+- [ x] `JwtAuthFilter`: extrae y valida JWT en cada request
+- [ x] `SecurityConfig`: rutas públicas vs protegidas, roles ADMIN/USER
+- [ x] CRUD de usuarios:
+  - [ x] `GET /users` → solo ADMIN, lista todos los usuarios (con paginación)
+  - [ x] `GET /users/{id}` → ADMIN puede ver cualquiera; USER solo puede ver el suyo (403 si intenta ver otro)
+  - [ x] `PUT /users/{id}` → solo ADMIN (actualiza fullName, email, role)
+  - [ x] `DELETE /users/{id}` → solo ADMIN
+  - [ x] `GET /users/me` → atajo para USER autenticado ver su propio perfil (extrae id del JWT)
 
 ### Libros
-- [ ] Entidad `Book` (title, author, isbn UNIQUE, publicationYear, genre, totalCopies, availableCopies)
-- [ ] CRUD completo (solo ADMIN escribe, cualquiera autenticado lee)
-- [ ] `GET /books` con filtros (autor, género, disponibilidad) + paginación → JPA Specifications combinables (**patrón Strategy**, ver sección 8)
-- [ ] Validación de inputs (Bean Validation: @NotBlank, @Min, etc.)
+- [Xx ] Entidad `Book` (title, author, isbn UNIQUE, publicationYear, genre, totalCopies, availableCopies)
+- [ x] CRUD completo (solo ADMIN escribe, cualquiera autenticado lee)
+- [ x] `GET /books` con filtros (autor, género, disponibilidad) + paginación → JPA Specifications combinables (**patrón Strategy**, ver sección 8)
+- [ x] Validación de inputs (Bean Validation: @NotBlank, @Min, etc.)
 
 ### Endpoints internos (para loans-service)
-- [ ] Filtro/middleware que valida API key compartida en header (`X-Internal-Api-Key`) para rutas `/internal/**`
-- [ ] `POST /internal/books/{id}/reserve` → UPDATE atómico condicional (`available_copies > 0`), sin cache
-- [ ] `POST /internal/books/{id}/release` → revierte reserva/suma copia, sin cache
+- [ x] Filtro/middleware que valida API key compartida en header (`X-Internal-Api-Key`) para rutas `/internal/**`
+- [ X] `POST /internal/books/{id}/reserve` → UPDATE atómico condicional (`available_copies > 0`), sin cache
+- [ X] `POST /internal/books/{id}/release` → revierte reserva/suma copia, sin cache
 
 ### Préstamos — orquestación de la saga
-- [ ] Entidad/tabla `LoanRequest` (id, requestId UUID, userId, bookId, status, attempts, createdAt, updatedAt)
-- [ ] `LoanClient` (interfaz + impl con `RestClient`, timeouts configurados, hacia loans-service) — **patrón Adapter**
-- [ ] `LoanOrchestrationService` (**orquestador de la Saga**):
-  - [ ] Validaciones locales primero (usuario existe/activo, límite de préstamos si aplica)
-  - [ ] Insertar `loan_requests` en `PENDING` con `requestId` nuevo
-  - [ ] Ejecutar reserva atómica (paso interno arriba) → 409 si no hay copias, sin llamar a B
-  - [ ] Llamar a B con reintentos (2-3 intentos, backoff 200ms/500ms/1s)
-  - [ ] Si confirma → `CONFIRMED`, 201 al cliente
-  - [ ] Si se agotan reintentos → llamar a `GET /loans/by-request-id/{requestId}` en B antes de decidir
-  - [ ] Según verificación: `CONFIRMED` (no compensar) o `COMPENSATING → COMPENSATED` (revertir copia local)
-  - [ ] Si la verificación también falla → dejar en estado pendiente, no compensar a ciegas
-- [ ] `GET /loans/me` o `GET /loans?userId=` (cliente final) → delega a B, devuelve préstamos del usuario autenticado
-- [ ] `POST /loans` (cliente final) → dispara la orquestación
-- [ ] `POST /loans/{id}/return` → llama a B, maneja igual los fallos de comunicación
-- [ ] **[MEJORA FUTURA — no implementar ahora]** Job de recuperación: `@Scheduled` que busca `loan_requests` en `PENDING`/`COMPENSATING` con más de N minutos y retoma la saga. Documentar el diseño y el trade-off en README ("préstamos huérfanos si el proceso muere a mitad de la saga; en producción se resuelve con este job o con outbox pattern transaccional")
+- [ X] Entidad/tabla `LoanRequest` (id, requestId UUID, userId, bookId, status, attempts, createdAt, updatedAt)
+- [ x] `LoanClient` (interfaz + impl con `RestClient`, timeouts configurados, hacia loans-service) — **patrón Adapter**
+- [x ] `LoanOrchestrationService` (**orquestador de la Saga**):
+  - [ x] Validaciones locales primero (usuario existe/activo, límite de préstamos si aplica)
+  - [ x] Insertar `loan_requests` en `PENDING` con `requestId` nuevo
+  - [ x] Ejecutar reserva atómica (paso interno arriba) → 409 si no hay copias, sin llamar a B
+  - [ x] Llamar a B con reintentos (2-3 intentos, backoff 200ms/500ms/1s)
+  - [x ] Si confirma → `CONFIRMED`, 201 al cliente
+  - [ x] Si se agotan reintentos → llamar a `GET /loans/by-request-id/{requestId}` en B antes de decidir
+  - [ x] Según verificación: `CONFIRMED` (no compensar) o `COMPENSATING → COMPENSATED` (revertir copia local)
+  - [ x] Si la verificación también falla → dejar en estado pendiente, no compensar a ciegas
+- [ x] `GET /loans/me` o `GET /loans?userId=` (cliente final) → delega a B, devuelve préstamos del usuario autenticado
+- [ x] `POST /loans` (cliente final) → dispara la orquestación
+- [ x] `POST /loans/{id}/return` → llama a B, maneja igual los fallos de comunicación
+- [ x] **[MEJORA FUTURA — no implementar ahora]** Job de recuperación: `@Scheduled` que busca `loan_requests` en `PENDING`/`COMPENSATING` con más de N minutos y retoma la saga. Documentar el diseño y el trade-off en README ("préstamos huérfanos si el proceso muere a mitad de la saga; en producción se resuelve con este job o con outbox pattern transaccional")
 
 ### Errores y transversales
-- [ ] `GlobalExceptionHandler` (@ControllerAdvice) con formato consistente `{timestamp, status, error, message, path}`
-- [ ] Excepciones custom: `ResourceNotFoundException`, `BadRequestException`, `ServiceUnavailableException`
-- [ ] Status codes correctos (400/401/403/404/409/503)
-- [ ] Logging estructurado (mínimo logs claros en puntos clave: intento de llamada a B, reintentos, compensación)
+- [x] `GlobalExceptionHandler` (@ControllerAdvice) con formato consistente `{timestamp, status, error, message, path}`
+- [x] Excepciones custom: `ResourceNotFoundException`, `BadRequestException`, `ServiceUnavailableException`
+- [x] Status codes correctos (400/401/403/404/409/503)
+- [x] Logging estructurado (mínimo logs claros en puntos clave: intento de llamada a B, reintentos, compensación)
 
 ### Tests library-service (mínimo 4)
-- [ ] Lógica de negocio en `BookService` (ISBN único, validación de copias)
-- [ ] `JwtServiceTest` (generación/validación)
-- [ ] `LoanOrchestrationServiceTest` — caso éxito (B confirma → `CONFIRMED`, copia decrementada)
-- [ ] **`LoanOrchestrationServiceTest` — caso B falla/timeout ⚠️ (PRIORITARIO)**: mockear `LoanClient.createLoan()` para lanzar `ServiceUnavailableException`, mockear `LoanClient.getLoanByRequestId()` también fallando → verificar que se llama `bookRepository.releaseReservation()` y el estado queda `COMPENSATED`
+- [x] Lógica de negocio en `BookService` (ISBN único, validación de copias)
+- [x] `JwtServiceTest` (generación/validación)
+- [x] `LoanOrchestrationServiceTest` — caso éxito (B confirma → `CONFIRMED`, copia decrementada)
+- [x] **`LoanOrchestrationServiceTest` — caso B falla/timeout ⚠️ (PRIORITARIO)**: reintentos agotados + verificación confirma que no hay préstamo → `bookService.release()` y estado `COMPENSATED`; si la verificación también falla → `PENDING` sin compensar a ciegas
 - [ ] (Opcional) Test de controller con MockMvc para status codes
 
 ### Infra
-- [ ] `Dockerfile` (multi-stage build con Maven)
+- [x] `Dockerfile` (multi-stage build con Maven)
 
 ---
 
 ## 2. loans-service — Go (obligatorio)
 
 ### Setup base
-- [ ] `go.mod` (Go 1.21+)
-- [ ] Estructura (**package-by-feature**, no por capa técnica): `cmd/api/main.go`, `internal/loan/`, `internal/httpclient/`, `internal/platform/`
+- [ X] `go.mod` (Go 1.21+)
+- [ x] Estructura (**package-by-feature**, no por capa técnica): `cmd/api/main.go`, `internal/loan/`, `internal/httpclient/`, `internal/platform/`
   - `internal/platform/` contiene: `config/` (lectura de variables de entorno al arranque) y `middleware/` (validación de API key interna — usado por el router de Chi)
-- [ ] Dependencias: Chi, pgx v5, validator/v10, testify, golang-migrate
-- [ ] Config vía variables de entorno (DB, puerto, URL de library-service, API key interna)
-- [ ] Migraciones con `golang-migrate` — tabla `loans` (id, request_id UNIQUE, user_id, book_id, status, loaned_at, returned_at); archivos en `migrations/000001_init.up.sql` y `000001_init.down.sql`
+- [X ] Dependencias: Chi, pgx v5, validator/v10, testify, golang-migrate
+- [ X] Config vía variables de entorno (DB, puerto, URL de library-service, API key interna)
+- [ X] Migraciones con `golang-migrate` — tabla `loans` (id, request_id UNIQUE, user_id, book_id, status, loaned_at, returned_at); archivos en `migrations/000001_init.up.sql` y `000001_init.down.sql`
 
 ### Modelo y persistencia
 - [ ] `internal/loan/model.go` — struct `Loan`
