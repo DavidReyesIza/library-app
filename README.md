@@ -176,6 +176,8 @@ go test ./...
 
 ## Decisiones técnicas
 
+> A lo largo de este documento: **Servicio A** = `library-service` (Java / Spring Boot), **Servicio B** = `loans-service` (Go).
+
 ### Por qué bases de datos separadas y no tablas separadas en el mismo PostgreSQL
 
 Con tablas separadas en la misma BD, `library-service` tendría acceso físico directo a los datos de préstamos — la separación sería solo organizacional (una convención de código), no estructural. Cualquier desarrollador podría hacer un `JOIN` entre `books` y `loans` en una sola query, acoplando los servicios a nivel de datos. Además, una caída o saturación de la BD afectaría ambos servicios simultáneamente. Dos instancias PostgreSQL en Docker Compose tienen costo cero de complejidad adicional y garantizan que la independencia de los servicios sea real e irreversible.
