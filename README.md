@@ -77,16 +77,6 @@ curl http://localhost:8080/health
 curl http://localhost:8081/health
 ```
 
-### Credenciales iniciales
-
-`DataSeeder.java` inserta automáticamente un usuario administrador al arrancar si no existe ninguno con ese email (corre después de las migraciones de Flyway, es idempotente):
-
-| Campo | Valor |
-|---|---|
-| Email | `admin@library.com` |
-| Password | `admin123` |
-| Rol | `ADMIN` |
-
 > El usuario administrador es necesario para los endpoints de escritura de libros (`POST/PUT/DELETE /books`) y gestión de usuarios (`GET/PUT/DELETE /users`).
 > Los usuarios registrados vía `POST /auth/register` siempre reciben rol `USER`.
 
@@ -95,7 +85,7 @@ curl http://localhost:8081/health
 ## Ejemplo de flujo completo
 
 ```bash
-# 1. Login como admin (usuario creado por la migración V3)
+# 1. Login como admin (creado por DataSeeder para propósitos de prueba; en producción se usaría un bootstrap seguro vía variables de entorno)
 curl -X POST http://localhost:8080/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@library.com","password":"admin123"}'
@@ -182,8 +172,6 @@ go test ./...
 | `TestReturnLoan_LibraryClientFails` | Falla parcial — el préstamo queda `RETURNED` localmente, error propagado como valor sin panic |
 | `TestCreateLoan_Idempotent` | Idempotencia — mismo `request_id` dos veces retorna el registro existente sin duplicar |
 
-Los mocks son **manuales** (no mockgen ni gomock): la interfaz `LoanRepository` vive en el paquete consumidor (`service.go`), por lo que los tests implementan directamente la interfaz — sin herramientas externas de generación de código.
-
 ---
 
 ## Decisiones técnicas
@@ -206,7 +194,7 @@ El enunciado original propone que loans-service llame a library-service para "va
 
 **¿Por qué el orquestador de la saga vive en library-service y no es un tercer servicio?**
 
-Con solo dos participantes, un orquestador externo (proceso separado, Kafka, servicio de coreografía) añadiría infraestructura sin resolver ningún problema nuevo. El orquestador vive en library-service porque es quien inicia el flujo, quien posee la reserva atómica, y quien tiene el contexto completo para decidir si compensar o confirmar. Si el orquestador viviera en loans-service, la lógica de compensación (`release`) tendría que llamar de vuelta a library-service — distribuyendo la responsabilidad de consistencia entre ambos servicios y haciendo el razonamiento sobre casos borde mucho más difícil.
+Con solo dos participantes, un orquestador externo (proceso separado, Kafka, servicio de coreografía) añadiría infraestructura sin resolver ningún problema en este sistema. El orquestador vive en library-service porque es quien inicia el flujo, quien posee la reserva atómica, y quien tiene el contexto completo para decidir si compensar o confirmar. Si el orquestador viviera en loans-service, la lógica de compensación (`release`) tendría que llamar de vuelta a library-service — distribuyendo la responsabilidad de consistencia entre ambos servicios y haciendo el razonamiento sobre casos borde mucho más difícil.
 
 ---
 
@@ -220,7 +208,7 @@ Con solo dos participantes, un orquestador externo (proceso separado, Kafka, ser
 
 **Organización por capas técnicas (`controller/`, `service/`, `repository/`)**
 
-Convención que Spring asume y que cualquier evaluador Java espera encontrar. Organizar por feature en Java introduce ambigüedad sobre dónde va cada clase.
+Utilizacion de capas técnicas en Java porque es la convención que Spring asume y que cualquier desarrollador Java reconoce al instante. Con tres entidades simples, organizar por feature no añade claridad — solo rompe una convención sin resolver ningún problema. El contraste con loans-service (organizado por feature en internal/loan/) es intencional: demuestra que aplico la convención del ecosistema de cada lenguaje, no que impongo el mismo patrón en los dos.
 
 ---
 
@@ -236,7 +224,7 @@ Chi usa `net/http` estándar sin wrappers propios — cualquier middleware que f
 
 **`pgx` directo y no GORM**
 
-GORM oculta el SQL generado, tiene edge cases conocidos con tipos PostgreSQL (UUID, ENUM, arrays), y su manejo de errores requiere inspeccionar `result.Error` en lugar de retornar `error` directamente. `pgx` da control total del SQL, maneja UUID y enums de PostgreSQL nativamente, y su API de error es idiomática en Go. El argumento de "GORM es más rápido de escribir" no aplica cuando se tienen ~5 queries bien definidas.
+GORM oculta el SQL generado, tiene edge cases conocidos con tipos PostgreSQL (UUID, ENUM, arrays), y su manejo de errores requiere inspeccionar `result.Error` en lugar de retornar `error` directamente. `pgx` da control total del SQL, maneja UUID y enums de PostgreSQL nativamente, y su API de error es idiomática en Go.
 
 **Interfaces definidas en el consumidor, no junto al struct concreto**
 
@@ -244,12 +232,12 @@ Convención idiomática de Go: la interfaz `LoanRepository` vive en el paquete `
 
 **Organización por feature (`internal/loan/`)**
 
-El modelo, handler, service y repository del dominio `loan` viven juntos en `internal/loan/`. Organizar por capa técnica en Go (`handlers/`, `services/`, `repositories/`) es el "efecto Java" — el ecosistema Go (incluyendo el tooling oficial) organiza por lo que el código hace, no por su rol técnico.
+El modelo, handler, service y repository del dominio `loan` viven juntos en `internal/loan/`. Organizar por capa técnica en Go (`handlers/`, `services/`, `repositories/`)  — el ecosistema Go (incluyendo el tooling oficial) organiza por lo que el código hace, no por su rol técnico.
 
 
 **Manejo de errores idiomático de Go**
 
-Los errores se retornan como valores en toda la cadena — no hay `panic` ni `log.Fatal` en la lógica de negocio. Los errores de dominio (`ErrNotFound`, `ErrDuplicateRequestID`, `ErrBookReleaseFailed`) son centinelas exportados definidos en `model.go` que los callers identifican con `errors.Is`. Los errores de infraestructura se envuelven con `fmt.Errorf("contexto: %w", err)` para preservar la cadena completa y permitir `errors.As`. El test `TestReturnLoan_LibraryClientFails` valida explícitamente que la falla de `ReleaseBook` se propaga como valor sin panic y que el error original es alcanzable via `errors.Is`.
+Los errores se retornan como valores en toda la cadena — no hay `panic` ni `log.Fatal` en la lógica de negocio. 
 
 **Estructura del proyecto loans-service**
 
@@ -276,17 +264,6 @@ loans-service/
 ```
 
 La interfaz `LoanRepository` y `LibraryClient` viven en `model.go` (paquete consumidor `loan/`), no junto a su implementación — convención Go de "define la interfaz donde la necesitas". Esto permite que `service_test.go` implemente mocks manuales sin importar los paquetes concretos de pgx o httpclient.
-
----
-
-### Rate limiting — Bucket4j (token bucket, en memoria)
-
-Los endpoints públicos (`/auth/**`, `/books/**`, `/loans/**`, `/users/**`) tienen un límite de **20 requests por minuto por IP**, implementado con `RateLimitInterceptor` usando Bucket4j.
-
-Cuando se supera el límite la API devuelve `429 Too Many Requests` con cuerpo JSON y el header `X-RateLimit-Remaining` indica los tokens disponibles en cada respuesta exitosa.
-
-**Trade-off aceptado — sin Redis:**
-Los buckets viven en memoria de cada instancia. En un entorno con una sola réplica esto es correcto. Con múltiples réplicas de `library-service`, cada instancia tiene su propio contador independiente — un cliente podría hacer 20 requests a la réplica A y otros 20 a la réplica B sin ser bloqueado. Para rate limiting distribuido real se necesitaría Bucket4j + Redis como backend compartido. Para el alcance de esta prueba, la implementación en memoria es suficiente y el trade-off está documentado.
 
 ---
 
@@ -326,7 +303,7 @@ Este `UPDATE` con condición en el `WHERE` garantiza que el decremento y la vali
 **2. Centraliza la compensación en un solo servicio.**
 Al ser library-service quien reserva antes de llamar a loans-service, también es library-service quien libera la copia si loans-service falla. Toda la lógica de compensación vive en `LoanOrchestrationService`. Si loans-service fuera quien llama a A para reservar, la compensación (llamar a `/release`) también debería vivir en loans-service — distribuyendo la lógica de consistencia entre dos servicios y dificultando el razonamiento sobre los casos borde.
 
-**Consecuencia:** loans-service es un servicio de persistencia pura en el flujo de creación — recibe una solicitud de préstamo ya validada y reservada, y simplemente la persiste. La responsabilidad de la invariante de negocio ("no prestar un libro sin copia disponible") queda exclusivamente en library-service, que es quien posee la tabla `books`.
+**Trade Off :** El trade-off es que loans-service pierde autonomía — asume que su único caller ya garantizó la disponibilidad. Lo acepté conscientemente porque en este sistema library-service es el único orquestador y es quien posee la fuente de verdad del inventario.`
 
 ---
 
@@ -371,44 +348,13 @@ La saga orquestada concentra toda la lógica de compensación en un único lugar
 4. loans-service marca el préstamo como RETURNED y llama a /internal/books/{id}/release
    para incrementar available_copies en library-service
 ```
-
 ### Trade-offs aceptados
 
-- **Job de recuperación automática** (`PendingLoanRecoveryJob`): corre cada 5 minutos y resuelve los `LoanRequest` que quedaron en `PENDING`. Para cada registro llama a `GET /loans/by-request-id/{requestId}` en loans-service: si el préstamo existe lo confirma, si no existe libera la copia reservada (COMPENSATED). Si loans-service sigue caído lo deja en PENDING y reintenta en el próximo ciclo. Usa `FOR UPDATE SKIP LOCKED` para ser seguro en entornos multi-instancia (varias réplicas de library-service nunca procesan la misma fila).
-- **Sin circuit breaker**: si loans-service está persistentemente caído, cada solicitud de préstamo esperará `3 × timeout_ms` antes de fallar. En producción se añadiría Resilience4j para abrir el circuito después de N fallos consecutivos.
+- **Job de recuperación automática** (`PendingLoanRecoveryJob`): corre cada 5 minutos y resuelve los `LoanRequest` que quedaron en `PENDING`. Para cada registro llama a `GET /loans/by-request-id/{requestId}` en loans-service: si el préstamo existe lo confirma, si no existe libera la copia reservada (COMPENSATED). Si loans-service sigue caído lo deja en PENDING y reintenta en el próximo ciclo. Usa `FOR UPDATE SKIP LOCKED` para ser seguro en entornos multi-instancia.
+
+- **Trade-off de incertidumbre en PENDING:** mientras un `LoanRequest` permanece en `PENDING`, la copia del libro está reservada pero el préstamo no está confirmado — el usuario no puede hacer otro préstamo de ese libro si agota las copias disponibles, y el sistema no sabe si el préstamo realmente ocurrió. Este estado de incertidumbre persiste hasta que ambos servicios estén disponibles simultáneamente y el job corra su próximo ciclo. En producción se resolvería con el **outbox pattern transaccional**: guardar el evento en la misma transacción que el `LoanRequest` y procesarlo con un relay dedicado que garantiza entrega eventual.
 
 
-**Resolución manual mientras no existe el job:**
-
-```bash
-# 1. Verificar si loans-service llegó a crear el préstamo
-curl http://localhost:8081/loans/by-request-id/<REQUEST_ID> \
-  -H "X-Internal-Api-Key: <INTERNAL_KEY>"
-
-# Si 404 → el préstamo no existe, liberar la copia manualmente:
-docker compose exec library-db psql -U postgres library_db -c \
-  "UPDATE loan_requests SET status='COMPENSATED' WHERE status='PENDING' AND request_id='<REQUEST_ID>';"
-docker compose exec library-db psql -U postgres library_db -c \
-  "UPDATE books SET available_copies = available_copies + 1 WHERE id='<BOOK_ID>';"
-
-# Si 200 → el préstamo sí existe, confirmar manualmente:
-docker compose exec library-db psql -U postgres library_db -c \
-  "UPDATE loan_requests SET status='CONFIRMED', loan_id='<LOAN_ID>' WHERE request_id='<REQUEST_ID>';"
-```
-
-**El job de recovery automático** (`PendingLoanRecoveryJob`) se ejecuta cada 5 minutos, selecciona registros `PENDING` más viejos que 10 minutos, y aplica la misma lógica: confirma si el préstamo existe en loans-service, compensa si no existe, o deja en PENDING si loans-service sigue caído. Los intervalos son configurables con `recovery.pending.stale-minutes` y `recovery.pending.interval-ms`.
-
----
-
-## Trade-offs y mejoras para producción
-
-| Trade-off actual | Por qué es aceptable ahora | Mejora en producción |
-|---|---|---|
-| `noRollbackFor = ServiceUnavailableException` para persistir PENDING | Funciona correctamente con una sola instancia y el recovery job | **Outbox pattern transaccional**: guardar el evento en la misma transacción que el `LoanRequest`, procesarlo con un relay separado |
-| Sin circuit breaker en llamadas a loans-service | Con 3 reintentos y backoff el impacto es acotado | **Resilience4j**: abrir el circuito después de N fallos consecutivos, evitar que cada request espere `3 × timeout` |
-| Rate limiting en memoria por instancia | Una réplica es suficiente para el alcance de la prueba | **Bucket4j + Redis**: bucket compartido entre réplicas para límite real por IP |
-| Recovery job con `@Scheduled` en el mismo proceso | Simple y suficiente con una réplica | **Job dedicado con leader election** (Spring Integration o Kubernetes CronJob) para evitar ejecuciones paralelas entre réplicas |
-| Sin cache en catálogo de libros | `available_copies` cambia con cada préstamo; un TTL crearía inconsistencias | **Redis `@Cacheable`** solo para campos estáticos (título, autor, ISBN) con invalidación en cada `PUT /books/{id}` |
 
 ---
 
@@ -428,20 +374,17 @@ docker compose exec library-db psql -U postgres library_db -c \
 
 | Ítem | Razón de la exclusión |
 |---|---|
-| **gRPC** | Evaluado y descartado: no aporta sobre HTTP/JSON para comunicación síncrona entre 2 servicios con contratos simples. La complejidad de protobuf, generación de código y compatibilidad entre Java y Go supera el beneficio en este contexto |
-| **DDD táctico completo** (agregados, value objects, domain events) | El dominio es simple — `Book` y `LoanRequest` no tienen invariantes de negocio complejas que justifiquen agregados. La frase de defensa: *"DDD táctico aporta cuando el dominio tiene reglas de negocio que proteger; aquí las reglas son simples y el framework las maneja bien"* |
-| **Tests de integración con Testcontainers** | Cubiertos funcionalmente por los unit tests con mocks (Mockito/testify) y el script end-to-end `scripts/test-saga.sh`. Testcontainers añadiría confianza en la integración real pero con costo alto de configuración (dos servicios, dos BDs, networking Docker en CI) |
-| **Service mesh / API Gateway** | Excluido explícitamente por el enunciado. En producción: Kong o AWS API Gateway delante de ambos servicios para autenticación centralizada, rate limiting global y observabilidad |
+| **gRPC** | Evaluado y descartado: la complejidad de protobuf y generación de código en dos lenguajes supera el beneficio para 2 servicios con contratos simples. En producción sí aportaría: HTTP/2 reduce latencia en llamadas frecuentes, el .proto garantiza que cliente y servidor nunca se desincronicen. |
 
 
 **Por qué NO Kafka / mensajería asíncrona**
 
-La comunicación entre `library-service` y `loans-service` es síncrona por diseño: el cliente necesita saber inmediatamente si el préstamo fue confirmado o falló para dar una respuesta. Introducir Kafka convertiría una operación request/response en un flujo eventual que complicaría la experiencia del cliente (polling, webhooks, o SSE) sin resolver ningún problema real con solo 2 participantes.
+La comunicación entre `library-service` y `loans-service` es síncrona por diseño: el cliente necesita saber inmediatamente si el préstamo fue confirmado o falló. Introducir Kafka convertiría una operación request/response en un flujo eventual que complicaría la experiencia del cliente sin resolver ningún problema real con solo 2 participantes. En producción sí aportaría si el sistema creciera: notificaciones de vencimiento de préstamo, auditoría de eventos, o integración con un servicio de multas que no necesita respuesta inmediata son casos donde la asincronía es la herramienta correcta.
 
 **Por qué NO CQRS / Event Sourcing**
 
-Los modelos de lectura y escritura de este sistema son idénticos — no hay consultas analíticas complejas que justifiquen proyecciones separadas. Event Sourcing requiere infraestructura de event store, reconstrucción de estado desde eventos y snapshots. El costo es alto; el beneficio, nulo para este dominio.
+Los modelos de lectura y escritura de este sistema son idénticos — no hay consultas analíticas complejas que justifiquen proyecciones separadas. Event Sourcing requiere infraestructura de event store, reconstrucción de estado desde eventos y snapshots. El costo es alto; el beneficio, nulo para este dominio. En producción valdría la pena si el historial de préstamos necesitara auditoría completa (quién reservó qué copia, cuándo y desde qué IP) o si hubiera reportes analíticos que requirieran un modelo de lectura diferente al modelo de escritura.
 
 **Por qué NO Clean Architecture completa**
 
-El desacoplamiento (interfaces) se aplicó solo en las dos fronteras donde el beneficio es real y medible: `LoanRepository` (testear sin BD) y `LoanClient` (testear sin loans-service). Aislar el dominio de `Book` o `LoanRequest` detrás de puertos y adaptadores hubiera sido desproporcionado para ~6 endpoints. La frase de defensa: *"Apliqué inversión de dependencias donde necesitaba aislar para testing. Modelar un dominio completamente aislado del framework hubiera sido sobre-ingeniería para el tamaño de este problema."*
+El desacoplamiento (interfaces) se aplicó solo en las dos fronteras donde el beneficio es real y medible: `LoanRepository` (testear sin BD) y `LoanClient` (testear sin loans-service). Aislar el dominio de `Book` o `LoanRequest` detrás de puertos y adaptadores hubiera sido desproporcionado para ~6 endpoints. En producción valdría la pena si el dominio creciera con reglas de negocio complejas (políticas de préstamo por tipo de usuario, límites dinámicos, integración con sistemas externos) que necesiten ser testeadas completamente aisladas del framework.
