@@ -246,9 +246,13 @@ Convención idiomática de Go: la interfaz `LoanRepository` vive en el paquete `
 El modelo, handler, service y repository del dominio `loan` viven juntos en `internal/loan/`. Organizar por capa técnica en Go (`handlers/`, `services/`, `repositories/`)  — el ecosistema Go (incluyendo el tooling oficial) organiza por lo que el código hace, no por su rol técnico.
 
 
+**`context.Context` en toda la cadena**
+
+Todas las operaciones de BD y las llamadas HTTP salientes reciben el `context.Context` del request para propagar cancelación y timeouts. El handler extrae el contexto con `r.Context()` y lo pasa explícitamente a través de toda la cadena: `handler → service → repository` y `handler → service → httpclient`. Esto garantiza que si el cliente cancela la conexión o un timeout se dispara, la query de PostgreSQL y cualquier llamada HTTP en curso se cancelen también — sin goroutines huérfanas.
+
 **Manejo de errores idiomático de Go**
 
-Los errores se retornan como valores en toda la cadena — no hay `panic` ni `log.Fatal` en la lógica de negocio. 
+Los errores se retornan como valores en toda la cadena — no hay `panic` ni `log.Fatal` en la lógica de negocio. Los errores de dominio (`ErrNotFound`, `ErrDuplicateRequestID`, `ErrBookReleaseFailed`) son centinelas exportados identificables con `errors.Is`. Los errores de infraestructura se envuelven con `fmt.Errorf("contexto: %w", err)` para preservar la cadena completa.
 
 **Estructura del proyecto loans-service**
 
