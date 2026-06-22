@@ -52,6 +52,13 @@ cp .env.example .env
 # Editar .env y reemplazar los valores "change_me"
 
 # 3. Levantar ambos servicios y sus bases de datos
+# Este comando:
+#   - Construye las imágenes de ambos servicios
+#   - Levanta los dos PostgreSQL (library_db en :5432, loans_db en :5433)
+#   - Ejecuta migraciones automáticamente al arrancar:
+#       library-service: Flyway corre V1__init.sql, V2__, V3__ contra library_db
+#       loans-service:   golang-migrate corre 000001_init.up.sql contra loans_db
+#   - DataSeeder crea el usuario admin (admin@library.com) si no existe por propositos de prueba
 docker compose up --build
 ```
 
