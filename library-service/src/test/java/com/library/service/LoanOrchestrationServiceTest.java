@@ -67,6 +67,14 @@ class LoanOrchestrationServiceTest {
         stubBookWithAvailableCopies(3, 2);
     }
 
+    /**
+     * Flujo feliz — loans-service responde OK en el primer intento.
+     *
+     * Logs esperados:
+     *   LoanRequest created: id=..., requestId=...
+     *   Book reserved: bookId=...
+     *   Loan CONFIRMED: requestId=..., loanId=55555555-...
+     */
     @Test
     void createLoan_confirmsWhenLoansServiceSucceeds() {
         LoanResponse loanResponse = new LoanResponse(
@@ -85,6 +93,18 @@ class LoanOrchestrationServiceTest {
         verify(loanClient, never()).findByRequestId(any());
     }
 
+    /**
+     * loans-service caído → verificación devuelve 404 (préstamo nunca llegó) → saga compensa.
+     *
+     * Logs esperados:
+     *   loans-service call failed, attempt 1/3: loans-service unreachable
+     *   loans-service call failed, attempt 2/3: loans-service unreachable
+     *   loans-service call failed, attempt 3/3: loans-service unreachable
+     *   Retries exhausted for requestId=..., verifying with loans-service...
+     *   Loan not found in loans-service, compensating: requestId=...
+     *   Releasing reserved copy: bookId=...
+     *   Compensation complete: requestId=...
+     */
     @Test
     void createLoan_compensatesWhenRetriesExhaustedAndLoanNotFoundInLoansService() {
         when(loanClient.createLoan(any(LoanServiceRequest.class)))
@@ -105,6 +125,17 @@ class LoanOrchestrationServiceTest {
                 .anyMatch(request -> request.getStatus() == LoanRequestStatus.COMPENSATED);
     }
 
+    /**
+     * loans-service caído → verificación también falla (red partida) → saga deja en PENDING.
+     * No se compensa a ciegas: es peor liberar una copia que puede estar prestada.
+     *
+     * Logs esperados:
+     *   loans-service call failed, attempt 1/3: loans-service unreachable
+     *   loans-service call failed, attempt 2/3: loans-service unreachable
+     *   loans-service call failed, attempt 3/3: loans-service unreachable
+     *   Retries exhausted for requestId=..., verifying with loans-service...
+     *   Verification also failed for requestId=... Leaving in PENDING for manual recovery.
+     */
     @Test
     void createLoan_leavesPendingWhenVerificationAlsoFails() {
         when(loanClient.createLoan(any(LoanServiceRequest.class)))

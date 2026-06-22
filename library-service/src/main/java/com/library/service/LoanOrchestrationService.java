@@ -33,7 +33,7 @@ public class LoanOrchestrationService {
 
     // ── Create loan (saga) ───────────────────────────────────────────────────
 
-    @Transactional
+    @Transactional(noRollbackFor = ServiceUnavailableException.class)
     public LoanRequestResponse createLoan(UUID userId, UUID bookId) {
         // 1. Validate book exists (throws 404 if not)
         bookService.findById(bookId);
