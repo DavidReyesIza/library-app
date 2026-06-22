@@ -18,6 +18,8 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"loans-service/internal/httpclient"
+	"loans-service/internal/loan"
 	"loans-service/internal/platform/config"
 	"loans-service/internal/platform/middleware"
 )
@@ -48,26 +50,24 @@ func main() {
 
 	slog.Info("database connected", "host", cfg.DBHost, "db", cfg.DBName)
 
-	// TODO: wire loan repository, library client, loan service, and handlers here
-	// Example (to be filled in the next implementation step):
-	//   repo    := loan.NewPostgresLoanRepository(pool)
-	//   client  := httpclient.NewLibraryClient(cfg.LibraryServiceURL, cfg.InternalAPIKey)
-	//   service := loan.NewService(repo, client)
-	//   handler := loan.NewHandler(service)
+	// Dependency wiring
+	repo    := loan.NewPostgresLoanRepository(pool)
+	client  := httpclient.NewLibraryClient(cfg.LibraryServiceURL, cfg.InternalAPIKey)
+	svc     := loan.NewService(repo, client)
+	handler := loan.NewHandler(svc)
 
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.RequestID)
 	r.Use(chiMiddleware.RealIP)
 	r.Use(chiMiddleware.Recoverer)
 
-	// Public — used by docker-compose healthcheck
+	// Public — used by docker-compose healthcheck (no API key required)
 	r.Get("/health", healthHandler)
 
-	// All loan endpoints require the internal API key
+	// All loan endpoints are internal — require X-Internal-Api-Key
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.InternalAPIKey(cfg.InternalAPIKey))
-		// TODO: mount loan routes here once handlers are implemented
-		// r.Mount("/loans", handler.Routes())
+		r.Mount("/loans", handler.Routes())
 	})
 
 	srv := &http.Server{

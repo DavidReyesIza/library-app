@@ -55,6 +55,7 @@ docker compose up --build
 El sistema estará disponible en:
 - **library-service**: http://localhost:8080
 - **loans-service**: http://localhost:8081
+- **Swagger UI**: http://localhost:8080/swagger-ui.html
 
 ### Verificar que todo está sano
 
@@ -63,18 +64,61 @@ curl http://localhost:8080/health
 curl http://localhost:8081/health
 ```
 
+### Credenciales iniciales
+
+La migración `V3__seed_admin.sql` inserta automáticamente un usuario administrador:
+
+| Campo | Valor |
+|---|---|
+| Email | `admin@library.com` |
+| Password | `admin123` |
+| Rol | `ADMIN` |
+
+> El usuario administrador es necesario para los endpoints de escritura de libros (`POST/PUT/DELETE /books`) y gestión de usuarios (`GET/PUT/DELETE /users`).
+> Los usuarios registrados vía `POST /auth/register` siempre reciben rol `USER`.
+
 ---
 
 ## Ejemplo de flujo completo
 
-> Ver sección completa con ejemplos curl en el README final.
+```bash
+# 1. Login como admin (usuario creado por la migración V3)
+curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@library.com","password":"admin123"}'
+# → {"token":"eyJ..."}   ← guardar como TOKEN_ADMIN
 
-```
-1. Registro:   POST /auth/register
-2. Login:      POST /auth/login          → obtener JWT
-3. Consultar:  GET  /books?genre=fiction → listar libros disponibles
-4. Préstamo:   POST /loans               → registrar préstamo
-5. Devolución: POST /loans/{id}/return   → devolver libro
+# 2. Crear un libro (requiere ADMIN)
+curl -X POST http://localhost:8080/books \
+  -H "Authorization: Bearer $TOKEN_ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Clean Code","author":"Robert Martin","isbn":"9780132350884","publicationYear":2008,"genre":"Software","totalCopies":3}'
+# → {"id":"<BOOK_ID>", ...}   ← guardar como BOOK_ID
+
+# 3. Registrar un usuario normal
+curl -X POST http://localhost:8080/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"fullName":"Juan Perez","email":"juan@test.com","password":"password123"}'
+# → {"token":"eyJ..."}   ← guardar como TOKEN_USER
+
+# 4. Listar libros disponibles
+curl http://localhost:8080/books?available=true \
+  -H "Authorization: Bearer $TOKEN_USER"
+
+# 5. Crear préstamo (orquesta la saga: reserva copia + crea registro en loans-service)
+curl -X POST http://localhost:8080/loans \
+  -H "Authorization: Bearer $TOKEN_USER" \
+  -H "Content-Type: application/json" \
+  -d '{"bookId":"<BOOK_ID>"}'
+# → {"id":"<LOAN_REQUEST_ID>", "status":"CONFIRMED", ...}
+
+# 6. Ver préstamos activos
+curl http://localhost:8080/loans/me/active \
+  -H "Authorization: Bearer $TOKEN_USER"
+
+# 7. Devolver libro
+curl -X POST http://localhost:8080/loans/<LOAN_REQUEST_ID>/return \
+  -H "Authorization: Bearer $TOKEN_USER"
 ```
 
 ---
@@ -169,8 +213,29 @@ La saga orquestada concentra toda la lógica de compensación en un único lugar
 
 ### Trade-offs aceptados
 
-- **Sin job de recuperación automática**: los `LoanRequest` que quedan en `PENDING` por caída del proceso en mid-saga requieren intervención manual o un scheduled job (`@Scheduled`) que retome la saga. En producción se resolvería con outbox pattern transaccional o el job de reconciliación. Está documentado como mejora futura.
+- **Job de recuperación automática** (`PendingLoanRecoveryJob`): corre cada 5 minutos y resuelve los `LoanRequest` que quedaron en `PENDING`. Para cada registro llama a `GET /loans/by-request-id/{requestId}` en loans-service: si el préstamo existe lo confirma, si no existe libera la copia reservada (COMPENSATED). Si loans-service sigue caído lo deja en PENDING y reintenta en el próximo ciclo. Usa `FOR UPDATE SKIP LOCKED` para ser seguro en entornos multi-instancia (varias réplicas de library-service nunca procesan la misma fila).
 - **Sin circuit breaker**: si loans-service está persistentemente caído, cada solicitud de préstamo esperará `3 × timeout_ms` antes de fallar. En producción se añadiría Resilience4j para abrir el circuito después de N fallos consecutivos.
+
+
+**Resolución manual mientras no existe el job:**
+
+```bash
+# 1. Verificar si loans-service llegó a crear el préstamo
+curl http://localhost:8081/loans/by-request-id/<REQUEST_ID> \
+  -H "X-Internal-Api-Key: <INTERNAL_KEY>"
+
+# Si 404 → el préstamo no existe, liberar la copia manualmente:
+docker compose exec library-db psql -U postgres library_db -c \
+  "UPDATE loan_requests SET status='COMPENSATED' WHERE status='PENDING' AND request_id='<REQUEST_ID>';"
+docker compose exec library-db psql -U postgres library_db -c \
+  "UPDATE books SET available_copies = available_copies + 1 WHERE id='<BOOK_ID>';"
+
+# Si 200 → el préstamo sí existe, confirmar manualmente:
+docker compose exec library-db psql -U postgres library_db -c \
+  "UPDATE loan_requests SET status='CONFIRMED', loan_id='<LOAN_ID>' WHERE request_id='<REQUEST_ID>';"
+```
+
+**El job de recovery automático** (`PendingLoanRecoveryJob`) se ejecuta cada 5 minutos, selecciona registros `PENDING` más viejos que 10 minutos, y aplica la misma lógica: confirma si el préstamo existe en loans-service, compensa si no existe, o deja en PENDING si loans-service sigue caído. Los intervalos son configurables con `recovery.pending.stale-minutes` y `recovery.pending.interval-ms`.
 
 ---
 

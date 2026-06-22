@@ -122,3 +122,4 @@ func (s *Service) GetActiveLoansByUser(ctx context.Context, userID string) ([]Lo
 func (s *Service) GetLoanHistoryByUser(ctx context.Context, userID string) ([]Loan, error) {
 	return s.repo.FindHistoryByUserID(ctx, userID)
 }
+

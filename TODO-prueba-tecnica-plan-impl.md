@@ -92,19 +92,19 @@
 - [ X] Migraciones con `golang-migrate` — tabla `loans` (id, request_id UNIQUE, user_id, book_id, status, loaned_at, returned_at); archivos en `migrations/000001_init.up.sql` y `000001_init.down.sql`
 
 ### Modelo y persistencia
-- [ ] `internal/loan/model.go` — struct `Loan`
-- [ ] `internal/loan/repository.go` — `PostgresLoanRepository` (struct concreto, **SIN interfaz aquí**), queries con pgx + `context.Context`
-- [ ] `internal/loan/service.go` — define interfaces `LoanRepository` y `LibraryClient` (**el consumidor define el contrato**, no el productor — regla de oro de interfaces idiomáticas en Go)
-- [ ] `internal/httpclient/library_client.go` — struct concreto que satisface `LibraryClient`, llama a A **solo** (`/internal/books/{id}/release`), con `context.WithTimeout` — **no llama a `/reserve`** porque A ya ejecutó la reserva atómica antes de llamar a B
+- [X ] `internal/loan/model.go` — struct `Loan`
+- [X ] `internal/loan/repository.go` — `PostgresLoanRepository` (struct concreto, **SIN interfaz aquí**), queries con pgx + `context.Context`
+- [ X] `internal/loan/service.go` — define interfaces `LoanRepository` y `LibraryClient` (**el consumidor define el contrato**, no el productor — regla de oro de interfaces idiomáticas en Go)
+- [ X] `internal/httpclient/library_client.go` — struct concreto que satisface `LibraryClient`, llama a A **solo** (`/internal/books/{id}/release`), con `context.WithTimeout` — **no llama a `/reserve`** porque A ya ejecutó la reserva atómica antes de llamar a B
 
 ### Endpoints (todos protegidos con API key interna)
-- [ ] `POST /loans` — recibe `{request_id, userId, bookId}`, idempotente (UNIQUE en `request_id`)
-- [ ] `POST /loans/{id}/return`
-- [ ] `GET /loans/active?userId=`
-- [ ] `GET /loans/history?userId=`
-- [ ] `GET /loans/by-request-id/{request_id}` — endpoint de verificación (clave para resolver ambigüedad de timeout)
-- [ ] Middleware de validación de API key interna
-- [ ] Validación de inputs con validator/v10
+- [ X] `POST /loans` — recibe `{request_id, userId, bookId}`, idempotente (UNIQUE en `request_id`)
+- [ X] `POST /loans/{id}/return`
+- [ X] `GET /loans/active?userId=`
+- [ X] `GET /loans/history?userId=`
+- [ X] `GET /loans/by-request-id/{request_id}` — endpoint de verificación (clave para resolver ambigüedad de timeout)
+- [ X] Middleware de validación de API key interna
+- [ X] Validación de inputs con validator/v10
 
 ### Lógica de negocio
 - [ ] `service.go`: registrar préstamo — **B no valida disponibilidad con A aquí**; A ya ejecutó la reserva atómica antes de llamar a B, por lo que B solo persiste el registro del préstamo y retorna confirmación
@@ -117,13 +117,13 @@
 - [ ] Status codes correctos
 
 ### Tests loans-service (mínimo 4, con testify + mocks de las interfaces)
-- [ ] Registro exitoso de préstamo — A ya reservó, B persiste y retorna 201
-- [ ] Devolución exitosa — `LibraryClient.Release()` retorna OK, préstamo queda en estado `RETURNED` en la BD de B
-- [ ] **Devolución con falla de LibraryClient ⚠️** — `LibraryClient.Release()` retorna error/timeout → préstamo queda `RETURNED` localmente (el estado local no se revierte), error propagado como valor sin panic, sin llamar a `log.Fatal` ni similar
-- [ ] Idempotencia: mismo `request_id` dos veces no duplica (UNIQUE constraint retorna error controlado, no 500)
+- [ X] Registro exitoso de préstamo — A ya reservó, B persiste y retorna 201
+- [ X] Devolución exitosa — `LibraryClient.Release()` retorna OK, préstamo queda en estado `RETURNED` en la BD de B
+- [ X] **Devolución con falla de LibraryClient ⚠️** — `LibraryClient.Release()` retorna error/timeout → préstamo queda `RETURNED` localmente (el estado local no se revierte), error propagado como valor sin panic, sin llamar a `log.Fatal` ni similar
+- [ X] Idempotencia: mismo `request_id` dos veces no duplica (UNIQUE constraint retorna error controlado, no 500)
 
 ### Infra
-- [ ] `Dockerfile` (multi-stage build)
+- [X ] `Dockerfile` (multi-stage build)
 
 ---
 
