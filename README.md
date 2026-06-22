@@ -4,6 +4,8 @@ Sistema de gestión de biblioteca compuesto por dos servicios independientes que
 
 ---
 
+> A lo largo de este documento: **Servicio A** = `library-service` (Java / Spring Boot), **Servicio B** = `loans-service` (Go).
+
 ## Arquitectura
 
 ```
@@ -13,7 +15,8 @@ Sistema de gestión de biblioteca compuesto por dos servicios independientes que
                             │ HTTP (JWT)
                             ▼
 ┌─────────────────────────────────────────────────────────┐
-│              library-service  (Java / Spring Boot 3)    │
+│     Library-service (servicio A) (Java / Spring Boot 3) │
+│                                                         │
 │  - Catálogo de libros (CRUD)                            │
 │  - Usuarios y autenticación JWT                         │
 │  - Orquestador de la saga de préstamos                  │
@@ -22,7 +25,7 @@ Sistema de gestión de biblioteca compuesto por dos servicios independientes que
                             │ HTTP (API Key interna)
                             ▼
 ┌─────────────────────────────────────────────────────────┐
-│              loans-service  (Go)                        │
+│              loans-service (servicio B)  (Go)           │
 │  - Registro y devolución de préstamos                   │
 │  - Historial y préstamos activos por usuario            │
 │  - PostgreSQL (loans_db)                                │
@@ -176,7 +179,7 @@ go test ./...
 
 ## Decisiones técnicas
 
-> A lo largo de este documento: **Servicio A** = `library-service` (Java / Spring Boot), **Servicio B** = `loans-service` (Go).
+
 
 ### Por qué bases de datos separadas y no tablas separadas en el mismo PostgreSQL
 
@@ -205,7 +208,6 @@ Con solo dos participantes, un orquestador externo (proceso separado, Kafka, ser
 **`RestClient` y no `WebClient` / `RestTemplate` / Feign**
 
 `RestClient` es el cliente HTTP síncrono moderno de Spring 6.1 — fluent API, sin reactividad innecesaria. `WebClient` está diseñado para stacks reactivos (WebFlux); usarlo en un stack bloqueante (Servlet) solo añade complejidad sin beneficio. `RestTemplate` está en modo mantenimiento desde Spring 5. Feign añade una dependencia extra para algo que `RestClient` resuelve nativamente con menos código.
-
 
 
 **Organización por capas técnicas (`controller/`, `service/`, `repository/`)**
